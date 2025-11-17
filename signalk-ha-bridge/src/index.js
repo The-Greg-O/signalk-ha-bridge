@@ -109,33 +109,38 @@ signalKClient.on('delta', (data) => {
       const sourceLabel = source.label || `N2K Source ${sourceId}`;
 
       update.values.forEach(({ path, value }) => {
-        // Get or auto-generate sensor configuration
-        const sensorConfig = sensorConverter.getSensorConfig(path, value);
+        // Expand objects into separate entities (e.g., attitude.yaw, attitude.pitch, attitude.roll)
+        const pathsToProcess = expandObjectPaths(path, value);
 
-        // Skip if explicitly disabled in config
-        if (sensorConfig.enabled === false) {
-          return;
-        }
+        pathsToProcess.forEach(({ path: expandedPath, value: expandedValue }) => {
+          // Get or auto-generate sensor configuration
+          const sensorConfig = sensorConverter.getSensorConfig(expandedPath, expandedValue);
 
-        // Auto-discover sensor in Home Assistant (only once per source+path combination)
-        const sensorKey = `${sourceId}_${path}`;
-        if (!discoveredSensors.has(sensorKey)) {
-          haDiscovery.publishDiscovery(path, sensorConfig, sourceId, sourceLabel, source);
-          discoveredSensors.add(sensorKey);
+          // Skip if explicitly disabled in config
+          if (sensorConfig.enabled === false) {
+            return;
+          }
 
-          // Get device info for logging
-          const deviceInfo = deviceRegistry.getDevice(sourceId);
-          const deviceName = deviceInfo
-            ? `${deviceInfo.manufacturer} ${deviceInfo.model}`
-            : sourceLabel;
+          // Auto-discover sensor in Home Assistant (only once per source+path combination)
+          const sensorKey = `${sourceId}_${expandedPath}`;
+          if (!discoveredSensors.has(sensorKey)) {
+            haDiscovery.publishDiscovery(expandedPath, sensorConfig, sourceId, sourceLabel, source);
+            discoveredSensors.add(sensorKey);
 
-          console.log(`🔍 Discovered: ${sensorConfig.name} (${path}) on ${deviceName}`);
-        }
+            // Get device info for logging
+            const deviceInfo = deviceRegistry.getDevice(sourceId);
+            const deviceName = deviceInfo
+              ? `${deviceInfo.manufacturer} ${deviceInfo.model}`
+              : sourceLabel;
 
-        // Convert and publish sensor value
-        const haValue = sensorConverter.convertValue(path, value, sensorConfig);
-        const stateTopic = haDiscovery.getStateTopic(path, sourceId);
-        mqttClient.publish(stateTopic, haValue);
+            console.log(`🔍 Discovered: ${sensorConfig.name} (${expandedPath}) on ${deviceName}`);
+          }
+
+          // Convert and publish sensor value
+          const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig);
+          const stateTopic = haDiscovery.getStateTopic(expandedPath, sourceId);
+          mqttClient.publish(stateTopic, haValue);
+        });
       });
     });
   } catch (error) {
@@ -150,6 +155,46 @@ signalKClient.on('error', (error) => {
 signalKClient.on('disconnected', () => {
   console.log('🔌 Disconnected from SignalK');
 });
+
+/**
+ * Expand object values into separate path/value pairs
+ * E.g., attitude: {yaw, pitch, roll} → attitude.yaw, attitude.pitch, attitude.roll
+ * @param {string} path - SignalK path
+ * @param {*} value - SignalK value
+ * @returns {Array} - Array of {path, value} objects
+ */
+function expandObjectPaths(path, value) {
+  // Skip null/undefined
+  if (value === null || value === undefined) {
+    return [{ path, value }];
+  }
+
+  // Special handling for position (already formatted correctly)
+  if (path.includes('position') && typeof value === 'object' && value.latitude && value.longitude) {
+    return [{ path, value }];
+  }
+
+  // If value is a simple object with numeric/string/boolean properties, expand it
+  if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
+    const isSimpleObject = Object.values(value).every(v =>
+      typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean' || v === null
+    );
+
+    if (isSimpleObject) {
+      const expanded = [];
+      for (const [key, val] of Object.entries(value)) {
+        expanded.push({
+          path: `${path}.${key}`,
+          value: val
+        });
+      }
+      return expanded.length > 0 ? expanded : [{ path, value }];
+    }
+  }
+
+  // Default: return as-is
+  return [{ path, value }];
+}
 
 // Graceful shutdown
 process.on('SIGINT', () => {
