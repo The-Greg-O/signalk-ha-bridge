@@ -46,6 +46,11 @@ class HADiscovery {
       discoveryPayload.icon = sensorConfig.icon;
     }
 
+    // Add state_class for numeric sensors to enable history/statistics
+    if (sensorConfig.unit && typeof sensorConfig.unit === 'string') {
+      discoveryPayload.state_class = 'measurement';
+    }
+
     // Add value template for JSON state topics
     if (this.isComplexSensor(signalkPath)) {
       discoveryPayload.value_template = '{{ value_json.value }}';
