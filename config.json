@@ -1,0 +1,102 @@
+{
+  "mqtt": {
+    "broker": "mqtt://10.147.17.65",
+    "port": 1883,
+    "clientId": "n2k-ha-bridge"
+  },
+  "signalk": {
+    "topicPrefix": "vessels",
+    "vesselId": "urn:mrn:signalk:uuid:03e9aeb2-0ede-488b-b5fc-5a79921a2c68",
+    "host": "10.147.17.208",
+    "port": 3000
+  },
+  "homeassistant": {
+    "discoveryPrefix": "homeassistant",
+    "deviceName": "Vessel N2K",
+    "deviceId": "vessel_n2k"
+  },
+  "sensors": {
+    "navigation.log": {
+      "enabled": true,
+      "name": "Distance Log",
+      "deviceClass": "distance",
+      "unit": "m",
+      "icon": "mdi:map-marker-distance"
+    },
+    "navigation.trip.log": {
+      "enabled": true,
+      "name": "Trip Log",
+      "deviceClass": "distance",
+      "unit": "m",
+      "icon": "mdi:map-marker-path"
+    },
+    "navigation.speedOverGround": {
+      "enabled": true,
+      "name": "Speed Over Ground",
+      "deviceClass": "speed",
+      "unit": "m/s",
+      "icon": "mdi:speedometer"
+    },
+    "navigation.courseOverGroundTrue": {
+      "enabled": true,
+      "name": "Course Over Ground",
+      "unit": "rad",
+      "icon": "mdi:compass"
+    },
+    "navigation.position": {
+      "enabled": true,
+      "name": "Position",
+      "icon": "mdi:crosshairs-gps"
+    },
+    "navigation.gnss.methodQuality": {
+      "enabled": true,
+      "name": "GPS Quality",
+      "icon": "mdi:satellite-variant"
+    },
+    "navigation.gnss.satellites": {
+      "enabled": true,
+      "name": "GPS Satellites",
+      "icon": "mdi:satellite-variant"
+    },
+    "navigation.datetime": {
+      "enabled": true,
+      "name": "GPS Time",
+      "deviceClass": "timestamp",
+      "icon": "mdi:clock-outline"
+    },
+    "environment.water.temperature": {
+      "enabled": true,
+      "name": "Water Temperature",
+      "deviceClass": "temperature",
+      "unit": "K",
+      "icon": "mdi:thermometer-water"
+    },
+    "environment.depth.belowTransducer": {
+      "enabled": true,
+      "name": "Depth",
+      "deviceClass": "distance",
+      "unit": "m",
+      "icon": "mdi:waves"
+    },
+    "environment.wind.speedApparent": {
+      "enabled": true,
+      "name": "Wind Speed (Apparent)",
+      "deviceClass": "wind_speed",
+      "unit": "m/s",
+      "icon": "mdi:weather-windy"
+    },
+    "environment.wind.angleApparent": {
+      "enabled": true,
+      "name": "Wind Angle (Apparent)",
+      "unit": "rad",
+      "icon": "mdi:windsock"
+    },
+    "electrical.batteries.*.voltage": {
+      "enabled": true,
+      "name": "Battery Voltage",
+      "deviceClass": "voltage",
+      "unit": "V",
+      "icon": "mdi:battery"
+    }
+  }
+}
