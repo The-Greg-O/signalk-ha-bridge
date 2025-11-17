@@ -38,6 +38,7 @@ class HADiscovery {
     }
 
     if (sensorConfig.unit) {
+      // Use original SI unit from config (HA will handle display conversion)
       discoveryPayload.unit_of_measurement = sensorConfig.unit;
     }
 

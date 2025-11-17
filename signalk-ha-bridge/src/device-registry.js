@@ -16,11 +16,13 @@ class DeviceRegistry {
     const url = `http://${signalkHost}:${signalkPort}/signalk/v1/api/sources`;
 
     return new Promise((resolve, reject) => {
+      let req;
       const timeout = setTimeout(() => {
+        if (req) req.destroy(); // Abort the request
         reject(new Error('SignalK API request timed out'));
-      }, 10000);
+      }, 30000); // Increased to 30 seconds for slow connections
 
-      http.get(url, (res) => {
+      req = http.get(url, (res) => {
         clearTimeout(timeout);
         let data = '';
 
