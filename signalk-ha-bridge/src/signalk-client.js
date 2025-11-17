@@ -28,8 +28,8 @@ class SignalKClient extends EventEmitter {
       console.log('✅ Connected to SignalK WebSocket');
       this.emit('connected');
 
-      // Subscribe to all vessel data
-      this.subscribe('vessels.*');
+      // Subscribe to only own vessel data (excludes AIS targets and other vessels)
+      this.subscribe('vessels.self.*');
     });
 
     this.ws.on('message', (data) => {
