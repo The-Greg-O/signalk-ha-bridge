@@ -109,9 +109,11 @@ signalKClient.on('delta', (data) => {
       const sourceLabel = source.label || `N2K Source ${sourceId}`;
 
       update.values.forEach(({ path, value }) => {
-        // Check if this sensor is enabled in config
-        const sensorConfig = sensorConverter.getSensorConfig(path);
-        if (!sensorConfig || !sensorConfig.enabled) {
+        // Get or auto-generate sensor configuration
+        const sensorConfig = sensorConverter.getSensorConfig(path, value);
+
+        // Skip if explicitly disabled in config
+        if (sensorConfig.enabled === false) {
           return;
         }
 
