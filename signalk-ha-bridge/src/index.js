@@ -8,7 +8,7 @@ const SensorConverter = require('./sensor-converter');
 const DeviceRegistry = require('./device-registry');
 
 // Load configuration
-const configPath = path.join(__dirname, '..', 'config.json');
+const configPath = path.join(__dirname, '..', 'app-config.json');
 const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
 
 // Override config with environment variables if provided
