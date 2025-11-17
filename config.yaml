@@ -1,0 +1,30 @@
+name: SignalK HA Bridge
+version: 1.0.0
+slug: signalk-ha-bridge
+description: Bridge SignalK marine data to Home Assistant with MQTT Discovery
+url: https://github.com/The-Greg-O/signalk-ha-bridge
+arch:
+  - armhf
+  - armv7
+  - aarch64
+  - amd64
+  - i386
+init: false
+startup: application
+boot: auto
+options:
+  signalk_host: "10.147.17.208"
+  signalk_port: 3000
+  mqtt_broker: "mqtt://10.147.17.65"
+  mqtt_port: 1883
+  mqtt_username: "n2khabridge"
+  mqtt_password: "!N2KMQTTBridge1"
+schema:
+  signalk_host: str
+  signalk_port: int
+  mqtt_broker: str
+  mqtt_port: int
+  mqtt_username: str
+  mqtt_password: password
+ports: {}
+host_network: true

@@ -350,16 +350,60 @@ n2k-ha-bridge/
 - Deploy initially as local service.
 - Convert to Home Assistant Add-on next.
 
+## Installation as Home Assistant Add-on
+
+### Prerequisites
+- Home Assistant OS installed
+- SignalK server running and accessible
+- MQTT broker (Mosquitto) installed in Home Assistant
+
+### Add the Repository
+
+1. Navigate to **Settings** → **Add-ons** → **Add-on Store**
+2. Click the **⋮** menu (top right) → **Repositories**
+3. Add this repository URL:
+   ```
+   https://github.com/The-Greg-O/signalk-ha-bridge
+   ```
+4. Click **Add** → **Close**
+
+### Install the Add-on
+
+1. Find **SignalK HA Bridge** in your add-on store
+2. Click on it and press **Install**
+3. After installation, go to the **Configuration** tab
+4. Configure your settings:
+   - **signalk_host**: IP address of your SignalK server (e.g., `10.147.17.208`)
+   - **signalk_port**: SignalK port (default: `3000`)
+   - **mqtt_broker**: MQTT broker URL (e.g., `mqtt://homeassistant.local`)
+   - **mqtt_port**: MQTT port (default: `1883`)
+   - **mqtt_username**: MQTT username
+   - **mqtt_password**: MQTT password
+5. Click **Save**
+6. Go to the **Info** tab and click **Start**
+7. Check the **Log** tab to verify successful connection
+
+### Configuration Example
+
+```yaml
+signalk_host: "10.147.17.208"
+signalk_port: 3000
+mqtt_broker: "mqtt://homeassistant.local"
+mqtt_port: 1883
+mqtt_username: "n2khabridge"
+mqtt_password: "your_secure_password"
+```
+
 ## Current Status
 
-**🚧 In Active Development - Transitioning to SignalK API Architecture**
+**✅ Production Ready - SignalK API Integration Complete**
 
-- ✅ Home Assistant MQTT Discovery protocol implementation complete
-- ✅ Per-device organization with manufacturer/model identification
-- ✅ Sensor value conversion and unit handling (Kelvin→Celsius, m/s→knots, rad→degrees)
-- 🔄 **In Progress:** Refactoring from MQTT to SignalK WebSocket/REST API
+- ✅ SignalK WebSocket streaming for real-time sensor data
+- ✅ SignalK REST API for N2K device metadata (manufacturer/model)
+- ✅ Home Assistant MQTT Discovery with proper device grouping
+- ✅ SI unit preservation (K, m/s, rad, m) - HA handles display conversion
+- ✅ Home Assistant add-on packaging for HA OS deployment
 - 📋 **Planned:** Bidirectional control entities (switches, buttons, numbers) for N2K device commands
-- 📋 **Planned:** Home Assistant add-on packaging with configuration UI
 
 ## Contributing
 
