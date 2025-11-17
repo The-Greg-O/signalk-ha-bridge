@@ -35,6 +35,9 @@ const sensorConverter = new SensorConverter(config);
 // Track discovered sensors
 const discoveredSensors = new Set();
 
+// Track if device registry is ready
+let deviceRegistryReady = false;
+
 // Initialize device registry
 async function initializeDeviceRegistry() {
   try {
@@ -43,6 +46,8 @@ async function initializeDeviceRegistry() {
   } catch (error) {
     console.warn('⚠️  Could not fetch device registry from SignalK:', error.message);
     console.warn('⚠️  Continuing without device metadata...');
+  } finally {
+    deviceRegistryReady = true;
   }
 }
 
@@ -76,6 +81,11 @@ signalKClient.on('hello', (message) => {
 
 signalKClient.on('delta', (data) => {
   try {
+    // Wait for device registry to load before processing deltas
+    if (!deviceRegistryReady) {
+      return;
+    }
+
     if (!data || !data.updates || data.updates.length === 0) {
       return;
     }
@@ -88,7 +98,13 @@ signalKClient.on('delta', (data) => {
       if (!update.values || update.values.length === 0) return;
 
       // Extract source information from the update
-      const source = update.source || update.$source || {};
+      let source = update.source || update.$source || {};
+
+      // Handle string sources (e.g., "derived-data", "defaults")
+      if (typeof source === 'string') {
+        source = { label: source, src: source };
+      }
+
       const sourceId = source.src || source.label || 'unknown';
       const sourceLabel = source.label || `N2K Source ${sourceId}`;
 
