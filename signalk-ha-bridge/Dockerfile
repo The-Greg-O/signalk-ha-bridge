@@ -4,12 +4,11 @@ FROM ${BUILD_FROM}
 # Set shell
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install Node.js 18
+# Install Node.js (latest available in Alpine)
 RUN \
     apk add --no-cache \
-        nodejs=~18 \
-        npm=~9 \
-    && npm install -g npm@latest
+        nodejs \
+        npm
 
 # Copy application files
 WORKDIR /app
