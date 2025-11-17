@@ -17,8 +17,8 @@ class SignalKClient extends EventEmitter {
   connect() {
     const host = this.config.signalk.host || 'localhost';
     const port = this.config.signalk.port || 3000;
-    // Use 'subscribe=none' and send explicit subscription for vessels.self only
-    const wsUrl = `ws://${host}:${port}/signalk/v1/stream?subscribe=none`;
+    // Use 'subscribe=self' to get only own vessel data
+    const wsUrl = `ws://${host}:${port}/signalk/v1/stream?subscribe=self`;
 
     console.log(`Connecting to SignalK WebSocket: ${wsUrl}`);
 

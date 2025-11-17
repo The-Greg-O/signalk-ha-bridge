@@ -35,6 +35,10 @@ const sensorConverter = new SensorConverter(config);
 // Track discovered sensors
 const discoveredSensors = new Set();
 
+// Track last publish time for throttling (sensorKey -> timestamp)
+const lastPublishTime = new Map();
+const PUBLISH_THROTTLE_MS = 1000; // Publish max once per second per sensor
+
 // Track if device registry is ready
 let deviceRegistryReady = false;
 
@@ -136,10 +140,19 @@ signalKClient.on('delta', (data) => {
             console.log(`🔍 Discovered: ${sensorConfig.name} (${expandedPath}) on ${deviceName}`);
           }
 
-          // Convert and publish sensor value
-          const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig);
-          const stateTopic = haDiscovery.getStateTopic(expandedPath, sourceId);
-          mqttClient.publish(stateTopic, haValue);
+          // Throttle publishing - max once per second per sensor
+          const publishKey = `${sourceId}_${expandedPath}`;
+          const now = Date.now();
+          const lastPublish = lastPublishTime.get(publishKey) || 0;
+
+          if (now - lastPublish >= PUBLISH_THROTTLE_MS) {
+            // Convert and publish sensor value
+            const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig);
+            const stateTopic = haDiscovery.getStateTopic(expandedPath, sourceId);
+            mqttClient.publish(stateTopic, haValue);
+
+            lastPublishTime.set(publishKey, now);
+          }
         });
       });
     });
