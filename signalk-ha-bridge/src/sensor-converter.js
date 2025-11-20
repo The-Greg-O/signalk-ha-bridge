@@ -1,6 +1,45 @@
 class SensorConverter {
   constructor(config) {
     this.config = config;
+    // Cache for temperature conversion functions per path
+    this.tempTransformCache = new Map();
+
+    // Regex-based device class lookup table (case-insensitive)
+    this.deviceClassMap = [
+      // Temperature sensors (all variations)
+      { pattern: /\b(water|outside|inside|engine|exhaust|coolant).*temperature/i, deviceClass: 'temperature', unit: '°C', icon: 'mdi:thermometer' },
+      { pattern: /temperature/i, deviceClass: 'temperature', unit: '°C', icon: 'mdi:thermometer' },
+
+      // Speed sensors
+      { pattern: /speedOverGround|speed\.sog|\.sog$/i, deviceClass: 'speed', unit: 'm/s', icon: 'mdi:speedometer' },
+      { pattern: /speedThroughWater|speed\.stw|\.stw$/i, deviceClass: 'speed', unit: 'm/s', icon: 'mdi:speedometer-medium' },
+
+      // Wind speed (special device_class)
+      { pattern: /wind.*speed|windSpeed/i, deviceClass: 'wind_speed', unit: 'm/s', icon: 'mdi:weather-windy' },
+
+      // Distance/Depth
+      { pattern: /depth\.(below|surface)/i, deviceClass: 'distance', unit: 'm', icon: 'mdi:waves' },
+      { pattern: /\b(log|trip|distance)\b/i, deviceClass: 'distance', unit: 'm', icon: 'mdi:map-marker-distance' },
+
+      // Angles (heading, course, wind angle)
+      { pattern: /\b(heading|course|courseOver|cog|angle|direction)\b/i, deviceClass: null, unit: 'rad', icon: 'mdi:compass' },
+      { pattern: /wind.*angle/i, deviceClass: null, unit: 'rad', icon: 'mdi:windsock' },
+
+      // Voltage
+      { pattern: /voltage/i, deviceClass: 'voltage', unit: 'V', icon: 'mdi:flash' },
+
+      // Current (electrical)
+      { pattern: /\bcurrent\b(?!.*level)/i, deviceClass: 'current', unit: 'A', icon: 'mdi:current-ac' },
+
+      // Pressure
+      { pattern: /pressure/i, deviceClass: 'pressure', unit: 'Pa', icon: 'mdi:gauge' },
+
+      // Position
+      { pattern: /position/i, deviceClass: null, unit: null, icon: 'mdi:crosshairs-gps' },
+
+      // Satellites
+      { pattern: /satellites/i, deviceClass: null, unit: null, icon: 'mdi:satellite-variant' },
+    ];
   }
 
   /**
@@ -40,13 +79,10 @@ class SensorConverter {
    * @returns {Object} - Generated sensor configuration
    */
   autoGenerateConfig(signalkPath, value) {
-    const pathParts = signalkPath.split('.');
-    const lastPart = pathParts[pathParts.length - 1];
-
     // Generate friendly name from path
     const name = this.generateFriendlyName(signalkPath);
 
-    // Auto-detect device class and unit
+    // Auto-detect device class and unit using regex table
     const { deviceClass, unit, icon } = this.inferMetadata(signalkPath, value);
 
     return {
@@ -78,102 +114,114 @@ class SensorConverter {
 
   /**
    * Infer metadata (device class, unit, icon) from SignalK path and value
+   * Uses regex-based lookup table for precise matching
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value
    * @returns {Object} - { deviceClass, unit, icon }
    */
   inferMetadata(signalkPath, value) {
-    let deviceClass = null;
-    let unit = null;
-    let icon = 'mdi:gauge';
-
-    // Temperature
-    if (signalkPath.includes('temperature')) {
-      deviceClass = 'temperature';
-      unit = 'K';
-      icon = 'mdi:thermometer';
-    }
-    // Speed
-    else if (signalkPath.includes('speed') || signalkPath.includes('Speed')) {
-      deviceClass = 'speed';
-      unit = 'm/s';
-      icon = 'mdi:speedometer';
-    }
-    // Distance/Depth
-    else if (signalkPath.includes('depth') || signalkPath.includes('log') || signalkPath.includes('distance')) {
-      deviceClass = 'distance';
-      unit = 'm';
-      icon = 'mdi:map-marker-distance';
-    }
-    // Voltage
-    else if (signalkPath.includes('voltage')) {
-      deviceClass = 'voltage';
-      unit = 'V';
-      icon = 'mdi:flash';
-    }
-    // Current
-    else if (signalkPath.includes('current') && !signalkPath.includes('Level')) {
-      deviceClass = 'current';
-      unit = 'A';
-      icon = 'mdi:current-ac';
-    }
-    // Pressure
-    else if (signalkPath.includes('pressure')) {
-      deviceClass = 'pressure';
-      unit = 'Pa';
-      icon = 'mdi:gauge';
-    }
-    // Angles/Heading/Course
-    else if (signalkPath.includes('angle') || signalkPath.includes('heading') || signalkPath.includes('course') || signalkPath.includes('Angle')) {
-      unit = 'rad';
-      icon = 'mdi:compass';
-    }
-    // Position
-    else if (signalkPath.includes('position')) {
-      icon = 'mdi:crosshairs-gps';
-    }
-    // Volume
-    else if (signalkPath.includes('volume')) {
-      icon = 'mdi:volume-high';
-    }
-    // State/Power
-    else if (signalkPath.includes('state')) {
-      icon = 'mdi:power';
-    }
-    // Muted
-    else if (signalkPath.includes('Muted') || signalkPath.includes('muted')) {
-      icon = 'mdi:volume-mute';
-    }
-    // Track/Song info
-    else if (signalkPath.includes('track') || signalkPath.includes('artist') || signalkPath.includes('album')) {
-      icon = 'mdi:music';
-    }
-    // Satellites
-    else if (signalkPath.includes('satellites')) {
-      icon = 'mdi:satellite-variant';
-    }
-    // Wind
-    else if (signalkPath.includes('wind')) {
-      deviceClass = 'wind_speed';
-      unit = 'm/s';
-      icon = 'mdi:weather-windy';
-    }
-    // Boolean values
-    else if (typeof value === 'boolean') {
-      icon = 'mdi:toggle-switch';
+    // Try regex table first (most specific)
+    for (const entry of this.deviceClassMap) {
+      if (entry.pattern.test(signalkPath)) {
+        return {
+          deviceClass: entry.deviceClass,
+          unit: entry.unit,
+          icon: entry.icon
+        };
+      }
     }
 
-    return { deviceClass, unit, icon };
+    // Boolean fallback
+    if (typeof value === 'boolean') {
+      return { deviceClass: null, unit: null, icon: 'mdi:toggle-switch' };
+    }
+
+    // Default for unknown types
+    return { deviceClass: null, unit: null, icon: 'mdi:gauge' };
+  }
+
+  /**
+   * Get or create cached temperature conversion function for a path
+   * Default assumption: if meta is missing, assume °C (many modern SignalK feeds already output °C)
+   * If meta.units is explicitly K or F, convert accordingly
+   * @param {string} signalkPath - SignalK path
+   * @param {Object} meta - SignalK meta object (if available)
+   * @returns {Function} - Conversion function (value) => convertedValue
+   */
+  getTempTransform(signalkPath, meta = null) {
+    // Check cache first
+    if (this.tempTransformCache.has(signalkPath)) {
+      return this.tempTransformCache.get(signalkPath);
+    }
+
+    // Determine transform based on meta.units
+    let transform;
+    const metaUnits = meta?.units;
+
+    if (metaUnits === 'K') {
+      // Explicit Kelvin → Celsius
+      transform = (v) => v - 273.15;
+    } else if (metaUnits === 'F' || metaUnits === '°F') {
+      // Explicit Fahrenheit → Celsius
+      transform = (v) => (v - 32) * 5/9;
+    } else {
+      // Default (no meta or meta says C/°C): assume already Celsius (identity)
+      transform = (v) => v;
+    }
+
+    // Cache it
+    this.tempTransformCache.set(signalkPath, transform);
+    return transform;
+  }
+
+  /**
+   * Round value intelligently based on type
+   * @param {number} value - Value to round
+   * @param {string} signalkPath - SignalK path
+   * @param {Object} sensorConfig - Sensor config
+   * @returns {number} - Rounded value
+   */
+  smartRound(value, signalkPath, sensorConfig) {
+    if (typeof value !== 'number' || !isFinite(value)) {
+      return value;
+    }
+
+    // Never round position (lat/lon)
+    if (signalkPath.includes('position')) {
+      return value;
+    }
+
+    // Never round pressure (need precision for weather)
+    if (signalkPath.includes('pressure')) {
+      return Number(value.toFixed(2));
+    }
+
+    // 1 decimal for temp, speed, wind, depth, angles
+    if (
+      sensorConfig.deviceClass === 'temperature' ||
+      sensorConfig.deviceClass === 'speed' ||
+      sensorConfig.deviceClass === 'wind_speed' ||
+      sensorConfig.deviceClass === 'distance' ||
+      sensorConfig.unit === 'rad' ||
+      sensorConfig.unit === '°'
+    ) {
+      return Number(value.toFixed(1));
+    }
+
+    // 2 decimals for everything else
+    return Number(value.toFixed(2));
   }
 
   /**
    * Convert SignalK value to Home Assistant format
+   * Implements v6 spec: meta-aware temp conversion, smart rounding, raw mode support
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value
    * @param {Object} sensorConfig - Sensor configuration
+   * @param {Object} meta - SignalK meta object (optional)
    * @returns {string} - Converted value for HA
    */
-  convertValue(signalkPath, value, sensorConfig) {
+  convertValue(signalkPath, value, sensorConfig, meta = null) {
     // Handle null/undefined values
     if (value === null || value === undefined) {
       return 'unknown';
@@ -193,10 +241,33 @@ class SensorConverter {
       return new Date(value).toISOString();
     }
 
-    // Handle numeric values - keep SI units unchanged
+    // Handle numeric values
     if (typeof value === 'number') {
-      // Round to 2 decimal places for readability
-      return value.toFixed(2);
+      // Check if NaN or non-finite
+      if (!isFinite(value)) {
+        return 'unknown';
+      }
+
+      // RAW MODE: return exactly as received (no conversion, no rounding)
+      if (this.config.rawMode) {
+        return value.toString();
+      }
+
+      // NORMAL MODE: Apply conversions
+
+      // Temperature conversion (K/°F → °C)
+      if (sensorConfig.deviceClass === 'temperature') {
+        const transform = this.getTempTransform(signalkPath, meta);
+        value = transform(value);
+
+        // Sanity check
+        if (value < -50 || value > 100) {
+          console.warn(`⚠️  Suspicious temperature value ${value.toFixed(1)}°C for ${signalkPath} - check meta.units`);
+        }
+      }
+
+      // Apply smart rounding
+      return this.smartRound(value, signalkPath, sensorConfig).toString();
     }
 
     // Handle objects (convert to JSON string)

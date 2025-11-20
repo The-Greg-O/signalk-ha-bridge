@@ -68,7 +68,7 @@
       "enabled": true,
       "name": "Water Temperature",
       "deviceClass": "temperature",
-      "unit": "K",
+      "unit": "°C",
       "icon": "mdi:thermometer-water"
     },
     "environment.depth.belowTransducer": {

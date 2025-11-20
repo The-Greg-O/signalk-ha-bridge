@@ -12,16 +12,27 @@ class HADiscovery {
    * @param {string} sourceId - N2K source ID (e.g., "3", "35", "43")
    * @param {string} sourceLabel - Human-readable source label
    * @param {Object} source - Full source object from SignalK message
+   * @param {Object} meta - SignalK meta object (optional, for raw mode unit labeling)
    */
-  publishDiscovery(signalkPath, sensorConfig, sourceId, sourceLabel, source) {
+  publishDiscovery(signalkPath, sensorConfig, sourceId, sourceLabel, source, meta = null) {
     const sensorId = this.getSensorId(signalkPath);
     const discoveryTopic = this.getDiscoveryTopic(signalkPath, sourceId);
     const stateTopic = this.getStateTopic(signalkPath, sourceId);
     const deviceId = this.getDeviceId(sourceId);
 
+    // Build entity name (add " (raw)" suffix if raw_mode is enabled)
+    const entityName = this.config.rawMode
+      ? `${sensorConfig.name} (raw)`
+      : sensorConfig.name;
+
+    // Build unique_id (add "_raw" suffix if raw_mode is enabled)
+    const uniqueId = this.config.rawMode
+      ? `${deviceId}_${sensorId}_raw`
+      : `${deviceId}_${sensorId}`;
+
     const discoveryPayload = {
-      name: sensorConfig.name,
-      unique_id: `${deviceId}_${sensorId}`,
+      name: entityName,
+      unique_id: uniqueId,
       state_topic: stateTopic,
       device: {
         identifiers: [deviceId],
@@ -32,14 +43,30 @@ class HADiscovery {
       },
     };
 
-    // Add optional fields if they exist
-    if (sensorConfig.deviceClass) {
+    // Add device_class (only in normal mode for speed/wind/temp)
+    // In raw mode, omit device_class so HA doesn't try to convert
+    if (!this.config.rawMode && sensorConfig.deviceClass) {
       discoveryPayload.device_class = sensorConfig.deviceClass;
     }
 
-    if (sensorConfig.unit) {
-      // Use original SI unit from config (HA will handle display conversion)
-      discoveryPayload.unit_of_measurement = sensorConfig.unit;
+    // Handle unit of measurement
+    if (this.config.rawMode) {
+      // RAW MODE: Use meta.units if available, otherwise omit unit entirely
+      if (meta && meta.units) {
+        discoveryPayload.unit_of_measurement = meta.units;
+      }
+      // No value_template in raw mode - publish raw values
+    } else if (sensorConfig.unit) {
+      // NORMAL MODE: Use configured units with conversions
+      // Angle conversion: radians → degrees (via value_template)
+      if (sensorConfig.unit === 'rad') {
+        discoveryPayload.unit_of_measurement = '°';
+        discoveryPayload.value_template = '{{ (value | float(0) * 57.29577951308232) | round(1) }}';
+        discoveryPayload.suggested_display_precision = 1;
+      } else {
+        // Use unit as-is
+        discoveryPayload.unit_of_measurement = sensorConfig.unit;
+      }
     }
 
     if (sensorConfig.icon) {
@@ -47,11 +74,12 @@ class HADiscovery {
     }
 
     // Add state_class for numeric sensors to enable history/statistics
-    if (sensorConfig.unit && typeof sensorConfig.unit === 'string') {
+    // Only add if unit exists and sensor is numeric (not position, not boolean)
+    if (sensorConfig.unit && typeof sensorConfig.unit === 'string' && !this.isComplexSensor(signalkPath)) {
       discoveryPayload.state_class = 'measurement';
     }
 
-    // Add value template for JSON state topics
+    // Add value template for JSON state topics (position)
     if (this.isComplexSensor(signalkPath)) {
       discoveryPayload.value_template = '{{ value_json.value }}';
       discoveryPayload.json_attributes_topic = stateTopic;

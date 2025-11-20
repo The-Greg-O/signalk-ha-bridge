@@ -74,6 +74,68 @@ This project uses SignalK's WebSocket streaming API and REST API instead of MQTT
 - N2K interface (USB/network) connects to HAOS host
 - Zero external dependencies, turnkey setup
 
+## Perfect Units System (v1.3.0)
+
+The bridge now features an intelligent unit conversion system that automatically displays marine sensor data in the correct units based on your Home Assistant configuration - without requiring any template sensors or YAML configuration.
+
+### How It Works
+
+**Automatic Mode (Default - `raw_mode: false`)**
+
+The bridge publishes sensor data using Home Assistant's device class system, allowing HA to automatically convert units based on your global unit preferences:
+
+- **Temperature**: SignalK sends Kelvin → Bridge converts to °C → HA displays °F automatically for imperial users
+- **Speed/Wind**: SignalK sends m/s → Bridge adds `device_class: speed` → HA displays knots for imperial users, km/h or m/s for metric
+- **Depth/Distance**: SignalK sends meters → Bridge adds `device_class: distance` → HA displays feet for imperial users
+- **Angles**: SignalK sends radians → Bridge converts to degrees using value templates → Always displays in degrees
+
+**Raw Debug Mode (`raw_mode: true`)**
+
+When enabled, the bridge publishes raw SignalK values without conversion:
+- Temperatures in Kelvin
+- Speeds in m/s (no device class)
+- Angles in radians
+- Entities get `_raw` suffix and "(raw)" name tag
+
+### Key Features
+
+✅ **Zero template sensors required** - Everything works out of the box
+✅ **Respects HA unit system** - Automatically adapts to imperial/metric preferences
+✅ **Meta-aware temperature conversion** - Handles K/°C/°F from SignalK correctly
+✅ **Smart rounding** - 1 decimal for speeds/temps/angles, 2 for everything else
+✅ **History & statistics support** - All sensors have `state_class: measurement`
+✅ **Angle conversion** - Radians → degrees with precision rounding
+✅ **Optional raw mode** - For debugging or advanced use cases
+
+### Configuration
+
+Add to your Home Assistant add-on configuration (or environment variables):
+
+```yaml
+raw_mode: false  # default - beautiful automatic units
+```
+
+That's it. One boolean, perfect units forever.
+
+### Examples
+
+**US/Imperial User** (HA set to imperial):
+- Water Temperature: `78.4 °F` (converted from SignalK Kelvin)
+- Wind Speed: `15.9 kn` (converted from SignalK m/s)
+- Depth: `12.3 ft` (converted from SignalK meters)
+- Wind Direction: `184.0°` (converted from SignalK radians)
+
+**Metric User** (HA set to metric):
+- Water Temperature: `25.8 °C`
+- Wind Speed: `8.2 m/s` or `29.5 km/h`
+- Depth: `3.7 m`
+- Wind Direction: `184.0°`
+
+**Raw Debug Mode** (`raw_mode: true`):
+- Water Temperature (raw): `293.15 K`
+- Wind Speed (raw): `8.23 m/s`
+- Wind Direction (raw): `3.21 rad`
+
 ## Example Home Assistant Entity Output
 
 ```json

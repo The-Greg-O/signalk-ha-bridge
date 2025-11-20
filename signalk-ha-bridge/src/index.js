@@ -18,12 +18,19 @@ if (process.env.MQTT_USERNAME) config.mqtt.username = process.env.MQTT_USERNAME;
 if (process.env.MQTT_PASSWORD) config.mqtt.password = process.env.MQTT_PASSWORD;
 if (process.env.SIGNALK_HOST) config.signalk.host = process.env.SIGNALK_HOST;
 if (process.env.SIGNALK_PORT) config.signalk.port = parseInt(process.env.SIGNALK_PORT);
+if (process.env.RAW_MODE !== undefined) config.rawMode = process.env.RAW_MODE === 'true';
+
+// Default raw_mode to false if not set
+if (config.rawMode === undefined) {
+  config.rawMode = false;
+}
 
 console.log('🚢 N2K HA Bridge starting...');
 console.log(`📡 SignalK Server: ${config.signalk.host}:${config.signalk.port}`);
 console.log(`📡 MQTT Broker: ${config.mqtt.broker}:${config.mqtt.port}`);
 console.log(`🔑 MQTT Auth: ${config.mqtt.username ? 'Enabled (user: ' + config.mqtt.username + ')' : 'Disabled'}`);
 console.log(`🏠 Home Assistant Discovery: ${config.homeassistant.discoveryPrefix}`);
+console.log(`📏 Unit Mode: ${config.rawMode ? 'Raw (debug)' : 'Auto (HA unit system)'}`);
 
 // Initialize components
 const mqttClient = new MQTTClient(config);
@@ -112,7 +119,7 @@ signalKClient.on('delta', (data) => {
       const sourceId = source.src || source.label || 'unknown';
       const sourceLabel = source.label || `N2K Source ${sourceId}`;
 
-      update.values.forEach(({ path, value }) => {
+      update.values.forEach(({ path, value, meta }) => {
         // Expand objects into separate entities (e.g., attitude.yaw, attitude.pitch, attitude.roll)
         const pathsToProcess = expandObjectPaths(path, value);
 
@@ -128,7 +135,7 @@ signalKClient.on('delta', (data) => {
           // Auto-discover sensor in Home Assistant (only once per source+path combination)
           const sensorKey = `${sourceId}_${expandedPath}`;
           if (!discoveredSensors.has(sensorKey)) {
-            haDiscovery.publishDiscovery(expandedPath, sensorConfig, sourceId, sourceLabel, source);
+            haDiscovery.publishDiscovery(expandedPath, sensorConfig, sourceId, sourceLabel, source, meta);
             discoveredSensors.add(sensorKey);
 
             // Get device info for logging
@@ -146,8 +153,8 @@ signalKClient.on('delta', (data) => {
           const lastPublish = lastPublishTime.get(publishKey) || 0;
 
           if (now - lastPublish >= PUBLISH_THROTTLE_MS) {
-            // Convert and publish sensor value
-            const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig);
+            // Convert and publish sensor value (pass meta for unit awareness)
+            const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig, meta);
             const stateTopic = haDiscovery.getStateTopic(expandedPath, sourceId);
             mqttClient.publish(stateTopic, haValue);
 
