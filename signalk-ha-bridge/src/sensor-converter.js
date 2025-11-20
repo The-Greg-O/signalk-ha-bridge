@@ -42,6 +42,7 @@ class SensorConverter {
 
   /**
    * Fetch meta information from SignalK REST API and cache it
+   * Handles nested properties (e.g., navigation.attitude.yaw where yaw is a property)
    * @param {string} signalkPath - SignalK path
    * @returns {Promise<Object>} - Meta object from SignalK
    */
@@ -59,7 +60,29 @@ class SensorConverter {
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        const meta = data.meta || {};
+        let meta = data.meta || {};
+
+        // Check if meta has this as a direct property, or if we need to look in parent
+        // E.g., for navigation.attitude.yaw, meta might be at navigation.attitude with properties.yaw
+        if (Object.keys(meta).length === 0 && signalkPath.includes('.')) {
+          // Try parent path
+          const parts = signalkPath.split('.');
+          const lastPart = parts.pop();
+          const parentPath = parts.join('.');
+
+          const parentUrl = `http://${host}:${port}/signalk/v1/api/vessels/self/${parentPath.replace(/\./g, '/')}`;
+          const parentResponse = await fetch(parentUrl);
+          if (parentResponse.ok) {
+            const parentData = await parentResponse.json();
+            const parentMeta = parentData.meta || {};
+
+            // Check if parent has properties.{lastPart}
+            if (parentMeta.properties && parentMeta.properties[lastPart]) {
+              meta = parentMeta.properties[lastPart];
+            }
+          }
+        }
+
         this.metaCache.set(signalkPath, meta);
         return meta;
       }

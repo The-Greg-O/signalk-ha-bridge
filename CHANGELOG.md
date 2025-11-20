@@ -5,6 +5,17 @@ All notable changes to the SignalK HA Bridge project will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2025-11-20
+
+### Fixed
+- **Nested property meta** - Now correctly fetches meta for expanded object properties (e.g., `navigation.attitude.yaw` gets units from `navigation.attitude.meta.properties.yaw.units`)
+- **Angle double-conversion** - Restarting the add-on republishes discovery messages without value_template, fixing 8743° errors
+- **Attitude sensor units** - Yaw/pitch/roll now show ° symbol correctly
+
+### Changed
+- Enhanced `fetchMeta()` to check parent path for `meta.properties.{child}` when direct path returns empty meta
+- Existing entities update in place (retained MQTT discovery messages are replaced on restart)
+
 ## [1.3.1] - 2025-11-20
 
 ### Fixed
