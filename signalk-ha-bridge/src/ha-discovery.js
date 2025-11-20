@@ -57,15 +57,12 @@ class HADiscovery {
       }
       // No value_template in raw mode - publish raw values
     } else if (sensorConfig.unit) {
-      // NORMAL MODE: Use configured units with conversions
-      // Angle conversion: radians → degrees (via value_template)
-      if (sensorConfig.unit === 'rad') {
-        discoveryPayload.unit_of_measurement = '°';
-        discoveryPayload.value_template = '{{ (value | float(0) * 57.29577951308232) | round(1) }}';
+      // NORMAL MODE: Use target units (conversions already applied in sensor-converter)
+      discoveryPayload.unit_of_measurement = sensorConfig.unit;
+
+      // For angles: sensor-converter already converted rad→degrees, just set precision
+      if (sensorConfig.unit === '°') {
         discoveryPayload.suggested_display_precision = 1;
-      } else {
-        // Use unit as-is
-        discoveryPayload.unit_of_measurement = sensorConfig.unit;
       }
     }
 

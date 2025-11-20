@@ -5,6 +5,20 @@ All notable changes to the SignalK HA Bridge project will be documented in this 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2025-11-20
+
+### Fixed
+- **Meta-driven unit detection** - Replaced regex pattern guessing with prescriptive meta.units-based approach
+- **Temperature conversion** - Now fetches and respects meta.units from SignalK REST API (K→°C conversion based on actual meta)
+- **Electrical vs water current** - Fixed misidentification by checking path context (electrical.* vs environment.*)
+- **Angle conversions** - Now properly converts radians to degrees based on meta.units
+- **Derived-data handling** - Gracefully handles sensors without meta information
+
+### Changed
+- Fetch meta from SignalK REST API on first sensor discovery (cached for performance)
+- Use unit-to-device-class mapping table (K→temperature, m/s→speed, rad→angle, etc.)
+- Apply all unit conversions in sensor-converter based on meta.units (not in discovery templates)
+
 ## [1.3.0] - 2025-11-20
 
 ### Added - Perfect Units System 🎉

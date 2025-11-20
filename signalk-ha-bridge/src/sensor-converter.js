@@ -3,43 +3,74 @@ class SensorConverter {
     this.config = config;
     // Cache for temperature conversion functions per path
     this.tempTransformCache = new Map();
+    // Cache for fetched meta information per path
+    this.metaCache = new Map();
 
-    // Regex-based device class lookup table (case-insensitive)
-    this.deviceClassMap = [
-      // Temperature sensors (all variations)
-      { pattern: /\b(water|outside|inside|engine|exhaust|coolant).*temperature/i, deviceClass: 'temperature', unit: '°C', icon: 'mdi:thermometer' },
-      { pattern: /temperature/i, deviceClass: 'temperature', unit: '°C', icon: 'mdi:thermometer' },
+    // Map SignalK units to Home Assistant device classes and target units
+    // This is prescriptive - we trust SignalK's meta.units
+    this.unitToDeviceClass = {
+      'K': { deviceClass: 'temperature', targetUnit: '°C', convert: (v) => v - 273.15 },
+      '°C': { deviceClass: 'temperature', targetUnit: '°C', convert: (v) => v },
+      'C': { deviceClass: 'temperature', targetUnit: '°C', convert: (v) => v },
+      '°F': { deviceClass: 'temperature', targetUnit: '°C', convert: (v) => (v - 32) * 5/9 },
+      'F': { deviceClass: 'temperature', targetUnit: '°C', convert: (v) => (v - 32) * 5/9 },
+      'm/s': { deviceClass: null, targetUnit: 'm/s', convert: (v) => v }, // speed or wind_speed determined by path
+      'm': { deviceClass: 'distance', targetUnit: 'm', convert: (v) => v },
+      'rad': { deviceClass: null, targetUnit: '°', convert: (v) => v * 57.29577951308232 }, // angles
+      'V': { deviceClass: 'voltage', targetUnit: 'V', convert: (v) => v },
+      'A': { deviceClass: 'current', targetUnit: 'A', convert: (v) => v },
+      'Pa': { deviceClass: 'pressure', targetUnit: 'Pa', convert: (v) => v },
+    };
 
-      // Speed sensors
-      { pattern: /speedOverGround|speed\.sog|\.sog$/i, deviceClass: 'speed', unit: 'm/s', icon: 'mdi:speedometer' },
-      { pattern: /speedThroughWater|speed\.stw|\.stw$/i, deviceClass: 'speed', unit: 'm/s', icon: 'mdi:speedometer-medium' },
+    // Icon mapping by SignalK path patterns (still useful for UI)
+    this.pathIcons = {
+      'temperature': 'mdi:thermometer',
+      'speedOverGround': 'mdi:speedometer',
+      'speedThroughWater': 'mdi:speedometer-medium',
+      'wind': 'mdi:weather-windy',
+      'depth': 'mdi:waves',
+      'heading': 'mdi:compass',
+      'course': 'mdi:compass',
+      'angle': 'mdi:compass',
+      'voltage': 'mdi:flash',
+      'current': 'mdi:current-ac',
+      'pressure': 'mdi:gauge',
+      'position': 'mdi:crosshairs-gps',
+      'satellites': 'mdi:satellite-variant',
+    };
+  }
 
-      // Wind speed (special device_class)
-      { pattern: /wind.*speed|windSpeed/i, deviceClass: 'wind_speed', unit: 'm/s', icon: 'mdi:weather-windy' },
+  /**
+   * Fetch meta information from SignalK REST API and cache it
+   * @param {string} signalkPath - SignalK path
+   * @returns {Promise<Object>} - Meta object from SignalK
+   */
+  async fetchMeta(signalkPath) {
+    // Check cache first
+    if (this.metaCache.has(signalkPath)) {
+      return this.metaCache.get(signalkPath);
+    }
 
-      // Distance/Depth
-      { pattern: /depth\.(below|surface)/i, deviceClass: 'distance', unit: 'm', icon: 'mdi:waves' },
-      { pattern: /\b(log|trip|distance)\b/i, deviceClass: 'distance', unit: 'm', icon: 'mdi:map-marker-distance' },
+    try {
+      const host = this.config.signalk?.host || 'localhost';
+      const port = this.config.signalk?.port || 3000;
+      const url = `http://${host}:${port}/signalk/v1/api/vessels/self/${signalkPath.replace(/\./g, '/')}`;
 
-      // Angles (heading, course, wind angle)
-      { pattern: /\b(heading|course|courseOver|cog|angle|direction)\b/i, deviceClass: null, unit: 'rad', icon: 'mdi:compass' },
-      { pattern: /wind.*angle/i, deviceClass: null, unit: 'rad', icon: 'mdi:windsock' },
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        const meta = data.meta || {};
+        this.metaCache.set(signalkPath, meta);
+        return meta;
+      }
+    } catch (error) {
+      // Silently fail - meta is optional
+    }
 
-      // Voltage
-      { pattern: /voltage/i, deviceClass: 'voltage', unit: 'V', icon: 'mdi:flash' },
-
-      // Current (electrical)
-      { pattern: /\bcurrent\b(?!.*level)/i, deviceClass: 'current', unit: 'A', icon: 'mdi:current-ac' },
-
-      // Pressure
-      { pattern: /pressure/i, deviceClass: 'pressure', unit: 'Pa', icon: 'mdi:gauge' },
-
-      // Position
-      { pattern: /position/i, deviceClass: null, unit: null, icon: 'mdi:crosshairs-gps' },
-
-      // Satellites
-      { pattern: /satellites/i, deviceClass: null, unit: null, icon: 'mdi:satellite-variant' },
-    ];
+    // Return empty meta object and cache it
+    const emptyMeta = {};
+    this.metaCache.set(signalkPath, emptyMeta);
+    return emptyMeta;
   }
 
   /**
@@ -47,9 +78,10 @@ class SensorConverter {
    * Auto-generates config if not explicitly defined in config file
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value (used to infer type)
+   * @param {Object} meta - SignalK meta object (optional)
    * @returns {Object} - Sensor configuration (never null)
    */
-  getSensorConfig(signalkPath, value = null) {
+  getSensorConfig(signalkPath, value = null, meta = null) {
     // Check if explicitly configured in config file
     if (this.config.sensors && this.config.sensors[signalkPath]) {
       return this.config.sensors[signalkPath];
@@ -68,22 +100,23 @@ class SensorConverter {
       }
     }
 
-    // Auto-generate configuration from path
-    return this.autoGenerateConfig(signalkPath, value);
+    // Auto-generate configuration from path and meta
+    return this.autoGenerateConfig(signalkPath, value, meta);
   }
 
   /**
-   * Auto-generate sensor config from SignalK path
+   * Auto-generate sensor config from SignalK path and meta
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value
+   * @param {Object} meta - SignalK meta object
    * @returns {Object} - Generated sensor configuration
    */
-  autoGenerateConfig(signalkPath, value) {
+  autoGenerateConfig(signalkPath, value, meta = null) {
     // Generate friendly name from path
     const name = this.generateFriendlyName(signalkPath);
 
-    // Auto-detect device class and unit using regex table
-    const { deviceClass, unit, icon } = this.inferMetadata(signalkPath, value);
+    // Infer device class and unit from meta.units
+    const { deviceClass, unit, icon } = this.inferFromMeta(signalkPath, value, meta);
 
     return {
       enabled: true,
@@ -113,65 +146,49 @@ class SensorConverter {
   }
 
   /**
-   * Infer metadata (device class, unit, icon) from SignalK path and value
-   * Uses regex-based lookup table for precise matching
+   * Infer device class, unit, and icon from meta.units
+   * This is prescriptive - we trust SignalK's meta
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value
+   * @param {Object} meta - SignalK meta object
    * @returns {Object} - { deviceClass, unit, icon }
    */
-  inferMetadata(signalkPath, value) {
-    // Try regex table first (most specific)
-    for (const entry of this.deviceClassMap) {
-      if (entry.pattern.test(signalkPath)) {
-        return {
-          deviceClass: entry.deviceClass,
-          unit: entry.unit,
-          icon: entry.icon
-        };
+  inferFromMeta(signalkPath, value, meta = null) {
+    const metaUnits = meta?.units;
+    let deviceClass = null;
+    let unit = null;
+    let icon = 'mdi:gauge';
+
+    // Use meta.units to determine device class and target unit
+    if (metaUnits && this.unitToDeviceClass[metaUnits]) {
+      const mapping = this.unitToDeviceClass[metaUnits];
+      deviceClass = mapping.deviceClass;
+      unit = mapping.targetUnit;
+
+      // Special case: m/s could be speed or wind_speed
+      if (metaUnits === 'm/s') {
+        if (signalkPath.includes('wind')) {
+          deviceClass = 'wind_speed';
+        } else if (signalkPath.includes('speed')) {
+          deviceClass = 'speed';
+        }
+      }
+    }
+
+    // Find icon based on path
+    for (const [keyword, iconName] of Object.entries(this.pathIcons)) {
+      if (signalkPath.toLowerCase().includes(keyword)) {
+        icon = iconName;
+        break;
       }
     }
 
     // Boolean fallback
     if (typeof value === 'boolean') {
-      return { deviceClass: null, unit: null, icon: 'mdi:toggle-switch' };
+      icon = 'mdi:toggle-switch';
     }
 
-    // Default for unknown types
-    return { deviceClass: null, unit: null, icon: 'mdi:gauge' };
-  }
-
-  /**
-   * Get or create cached temperature conversion function for a path
-   * Default assumption: if meta is missing, assume °C (many modern SignalK feeds already output °C)
-   * If meta.units is explicitly K or F, convert accordingly
-   * @param {string} signalkPath - SignalK path
-   * @param {Object} meta - SignalK meta object (if available)
-   * @returns {Function} - Conversion function (value) => convertedValue
-   */
-  getTempTransform(signalkPath, meta = null) {
-    // Check cache first
-    if (this.tempTransformCache.has(signalkPath)) {
-      return this.tempTransformCache.get(signalkPath);
-    }
-
-    // Determine transform based on meta.units
-    let transform;
-    const metaUnits = meta?.units;
-
-    if (metaUnits === 'K') {
-      // Explicit Kelvin → Celsius
-      transform = (v) => v - 273.15;
-    } else if (metaUnits === 'F' || metaUnits === '°F') {
-      // Explicit Fahrenheit → Celsius
-      transform = (v) => (v - 32) * 5/9;
-    } else {
-      // Default (no meta or meta says C/°C): assume already Celsius (identity)
-      transform = (v) => v;
-    }
-
-    // Cache it
-    this.tempTransformCache.set(signalkPath, transform);
-    return transform;
+    return { deviceClass, unit, icon };
   }
 
   /**
@@ -214,11 +231,11 @@ class SensorConverter {
 
   /**
    * Convert SignalK value to Home Assistant format
-   * Implements v6 spec: meta-aware temp conversion, smart rounding, raw mode support
+   * Uses meta.units to determine conversion (prescriptive approach)
    * @param {string} signalkPath - SignalK path
    * @param {*} value - SignalK value
    * @param {Object} sensorConfig - Sensor configuration
-   * @param {Object} meta - SignalK meta object (optional)
+   * @param {Object} meta - SignalK meta object (required for proper conversion)
    * @returns {string} - Converted value for HA
    */
   convertValue(signalkPath, value, sensorConfig, meta = null) {
@@ -253,16 +270,15 @@ class SensorConverter {
         return value.toString();
       }
 
-      // NORMAL MODE: Apply conversions
+      // NORMAL MODE: Apply conversions based on meta.units
+      const metaUnits = meta?.units;
+      if (metaUnits && this.unitToDeviceClass[metaUnits]) {
+        const mapping = this.unitToDeviceClass[metaUnits];
+        value = mapping.convert(value);
 
-      // Temperature conversion (K/°F → °C)
-      if (sensorConfig.deviceClass === 'temperature') {
-        const transform = this.getTempTransform(signalkPath, meta);
-        value = transform(value);
-
-        // Sanity check
-        if (value < -50 || value > 100) {
-          console.warn(`⚠️  Suspicious temperature value ${value.toFixed(1)}°C for ${signalkPath} - check meta.units`);
+        // Sanity check for temperatures
+        if (mapping.deviceClass === 'temperature' && (value < -50 || value > 100)) {
+          console.warn(`⚠️  Suspicious temperature value ${value.toFixed(1)}°C for ${signalkPath} (raw: ${value}, meta.units: ${metaUnits})`);
         }
       }
 

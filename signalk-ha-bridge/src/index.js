@@ -119,23 +119,29 @@ signalKClient.on('delta', (data) => {
       const sourceId = source.src || source.label || 'unknown';
       const sourceLabel = source.label || `N2K Source ${sourceId}`;
 
-      update.values.forEach(({ path, value, meta }) => {
+      update.values.forEach(async ({ path, value, meta }) => {
         // Expand objects into separate entities (e.g., attitude.yaw, attitude.pitch, attitude.roll)
         const pathsToProcess = expandObjectPaths(path, value);
 
-        pathsToProcess.forEach(({ path: expandedPath, value: expandedValue }) => {
-          // Get or auto-generate sensor configuration
-          const sensorConfig = sensorConverter.getSensorConfig(expandedPath, expandedValue);
+        for (const { path: expandedPath, value: expandedValue } of pathsToProcess) {
+          // Fetch meta from SignalK REST API if not in delta
+          let metaForPath = meta;
+          if (!metaForPath || Object.keys(metaForPath).length === 0) {
+            metaForPath = await sensorConverter.fetchMeta(expandedPath);
+          }
+
+          // Get or auto-generate sensor configuration (pass meta for proper inference)
+          const sensorConfig = sensorConverter.getSensorConfig(expandedPath, expandedValue, metaForPath);
 
           // Skip if explicitly disabled in config
           if (sensorConfig.enabled === false) {
-            return;
+            continue;
           }
 
           // Auto-discover sensor in Home Assistant (only once per source+path combination)
           const sensorKey = `${sourceId}_${expandedPath}`;
           if (!discoveredSensors.has(sensorKey)) {
-            haDiscovery.publishDiscovery(expandedPath, sensorConfig, sourceId, sourceLabel, source, meta);
+            haDiscovery.publishDiscovery(expandedPath, sensorConfig, sourceId, sourceLabel, source, metaForPath);
             discoveredSensors.add(sensorKey);
 
             // Get device info for logging
@@ -153,14 +159,14 @@ signalKClient.on('delta', (data) => {
           const lastPublish = lastPublishTime.get(publishKey) || 0;
 
           if (now - lastPublish >= PUBLISH_THROTTLE_MS) {
-            // Convert and publish sensor value (pass meta for unit awareness)
-            const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig, meta);
+            // Convert and publish sensor value (meta already fetched above)
+            const haValue = sensorConverter.convertValue(expandedPath, expandedValue, sensorConfig, metaForPath);
             const stateTopic = haDiscovery.getStateTopic(expandedPath, sourceId);
             mqttClient.publish(stateTopic, haValue);
 
             lastPublishTime.set(publishKey, now);
           }
-        });
+        }
       });
     });
   } catch (error) {
